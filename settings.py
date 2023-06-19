@@ -48,6 +48,8 @@ TOOLBAR_HEIGHT  = HEIGHT - WIDTH
 PIXEL_SIZE      = WIDTH // COLS
 BG_COLOR        = WHITE
 DRAW_GRID_LINES = True
+FAST_RENDER = True
+GPU_ACCELERATION = False
 
 def get_font(size):
     return pygame.font.SysFont("arial", size)
@@ -57,7 +59,7 @@ FPS             = 120
 
 WIDTH, HEIGHT   = 600, 700
 
-ROWS = COLS     = 40    #increase to have smaller pixels
+ROWS = COLS     = 120    #increase to have smaller pixels
 
 TOOLBAR_HEIGHT  = HEIGHT - WIDTH
 

@@ -1,6 +1,13 @@
 import math
-
-from utils import *
+import pygame
+import settings
+import numpy
+import time
+from .settings import *
+import threading
+import pyopencl as cl
+import numpy as np
+import time
 
 
 def normalize(channelvalue):                                                                                             # Helper function to keep color values within bounds
@@ -88,13 +95,23 @@ class ImageManager:
     def save(self,window,filename):                                                                                      # save with filename input
         pygame.image.save_extended(window,filename)
 
-    def clear(self,grid):                                                                                                # clear the entire grid
+    def clear(self,grid):
+        # clear the entire grid
         for i in range(ROWS):
             for j in range(COLS):
                 grid[j][i] = (255,255,255)
 
+    def renderFast(self,window,grid):
+        NoPixelsInRow = (self.img.get_width() / self.w)
+        NoPixelsInCols = (self.img.get_height() / self.h)
+        Pixels3D = pygame.surfarray.array3d(self.img)
+        print(NoPixelsInCols)
+        for i in range(COLS):
+            for j in range(ROWS):
+                grid[i][j] = Pixels3D[math.floor((j+0.5)*NoPixelsInRow)][math.floor((i+0.5)*NoPixelsInCols)]
+
     def render(self,window,grid):                                                                                        # This algorithm takes the average of the pixels which should be present in a block of the grid
-                                                                                                                         # Although it is very accurate, it is also very demanding
+        start = time.time_ns()                                                                  # Although it is very accurate, it is also very demanding
         NoPixelsInRow = math.floor(self.img.get_width()/self.w)
         NoPixelsInCols = math.floor(self.img.get_height()/self.h)
         TotalPixelInBlock = math.floor(NoPixelsInCols*NoPixelsInCols)
@@ -119,12 +136,199 @@ class ImageManager:
                 avgGreen /= TotalPixelInBlock                                                                            # avg blue color
                 if (y+self.y < ROWS and x + self.x < COLS):
                     grid[y+ self.y][x + self.x] = (normalize(avgRed),normalize(avgGreen),normalize(avgBlue))             # Assign color to blocks in grid
+        print("RENDER TIME: "+ str((time.time_ns() - start)/1000000000) + "s")
 
 
 
+    def renderSurf(self,window,grid):                                                                                   # Same func as render but faster     # This algorithm takes the average of the pixels which should be present in a block of the grid
+
+                                                                                                                  # Although it is very accurate, it is also very demanding
+        NoPixelsInRow = (self.img.get_width()/self.w)
+        NoPixelsInCols = (self.img.get_height()/self.h)
+        TotalPixelInBlock = math.floor(NoPixelsInCols*NoPixelsInCols)
+        start = time.time_ns()
+        ImgSurface = pygame.Surface.convert(self.img)
+        Pixels3D = pygame.surfarray.pixels3d(ImgSurface)
+        print("TIME:"+str((time.time_ns()-start)/1000000000)+"s")
+
+        self.clear(self,grid)                                                                                            # clear the grid before render, otherwise we are left with a mush in the area which should be
+                                                                                                                         # clear because of lack of cleanup
+        for x in range(self.w):
+            for y in range(self.h):
+                avgRed = 0
+                avgGreen = 0
+                avgBlue = 0
+
+                for j in range(math.floor(NoPixelsInCols)):
+                    for i in range(math.floor(NoPixelsInRow)):
+                                      # get colors of pixels here
+                        avgRed   += Pixels3D[math.floor(NoPixelsInRow*x + i)][math.floor(NoPixelsInCols*y + j)][0]                                                                                  # sum red color
+                        avgGreen += Pixels3D[math.floor(NoPixelsInRow*x + i)][math.floor(NoPixelsInCols*y + j)][1]                                                                                # sum green color
+                        avgBlue  += Pixels3D[math.floor(NoPixelsInRow*x + i)][math.floor(NoPixelsInCols*y + j)][2]                                                                                 # sum blue color
+
+                avgRed   /= TotalPixelInBlock                                                                            # avg red color
+                avgBlue  /= TotalPixelInBlock                                                                            # avg green color
+                avgGreen /= TotalPixelInBlock                                                                            # avg blue color
+                if (y+self.y < ROWS and x + self.x < COLS):
+                    grid[y+ self.y][x + self.x] = (normalize(avgRed),normalize(avgGreen),normalize(avgBlue))             # Assign color to blocks in grid
+
+
+        print("RENDER TIME: "+ str((time.time_ns() - start)/1000000000) + "s")
+
+
+    def renderThread(self, window, grid, num_threads):
+        start = time.time_ns()
+        NoPixelsInRow = math.floor(self.img.get_width() / self.w)
+        NoPixelsInCols = math.floor(self.img.get_height() / self.h)
+        TotalPixelInBlock = math.floor(NoPixelsInCols * NoPixelsInCols)
+        ImgSurface = pygame.Surface.convert(self.img)
+
+        print(pygame.surfarray.get_arraytypes())
+        print(pygame.surfarray.get_arraytype())
+        self.clear(self, grid)
+
+        def process_blocks(start_x, end_x, start_y, end_y):
+            Pixels3D = pygame.surfarray.array3d(ImgSurface)
+
+            for x in range(start_x, end_x):
+                for y in range(start_y, end_y):
+                    avgRed = 0
+                    avgGreen = 0
+                    avgBlue = 0
+                    for i in range(NoPixelsInRow):
+                        for j in range(NoPixelsInCols):
+                            avgRed += Pixels3D[NoPixelsInRow * x + i][NoPixelsInCols * y + j][0]  # sum red color
+                            avgGreen += Pixels3D[NoPixelsInRow * x + i][NoPixelsInCols * y + j][1]  # sum green color
+                            avgBlue += Pixels3D[NoPixelsInRow * x + i][NoPixelsInCols * y + j][2]
+                    avgRed /= TotalPixelInBlock
+                    avgBlue /= TotalPixelInBlock
+                    avgGreen /= TotalPixelInBlock
+                    if (y + self.y < ROWS and x + self.x < COLS):
+                        grid[y + self.y][x + self.x] = (normalize(avgRed), normalize(avgGreen), normalize(avgBlue))
+
+        block_size_x = math.ceil(self.w / num_threads)
+        block_size_y = math.ceil(self.h / num_threads)
+        threads = []
+        for i in range(num_threads):
+            start_x = i * block_size_x
+            end_x = min(start_x + block_size_x, self.w)
+            for j in range(num_threads):
+                start_y = j * block_size_y
+                end_y = min(start_y + block_size_y, self.h)
+                thread = threading.Thread(target=process_blocks, args=(start_x, end_x, start_y, end_y))
+                thread.start()
+                threads.append(thread)
+
+        for thread in threads:
+            thread.join()
+
+        print("RENDER TIME: " + str((time.time_ns() - start) / 1000000000) + "s")
 
 
 
+    def renderOpenCL(self,window,grid):
+    # This algorithm takes the average of the pixels which should be present in a block of the grid
 
+    # Define the kernel code
+        kernel_code = """
+            __kernel void pixelate(
+            __global const uchar4* input,
+            __global uchar4* output,
+            const int W,
+            const int H,
+            const int width,
+            const int height){
+            
+                for (int i = 0; i < height; ++i) {
+                for (int j = 0; j < width; ++j) {
 
+                const int wStep = width / W;
+                const int hStep = height / H;
+
+                const int startX = i * wStep;
+                const int endX = (i + 1) * wStep;
+                const int startY = j * hStep;
+                const int endY = (j + 1) * hStep;
+
+                int rSum = 0, gSum = 0, bSum = 0;
+                int count = 0;
+
+                for (int x = startX; x < endX; ++x) {
+                    for (int y = startY; y < endY; ++y) {
+                        const int index = j * height + i;
+                        const uchar4 pixel = input[index];
+
+                        rSum += pixel.x;
+                        gSum += pixel.y;
+                        bSum += pixel.z;
+
+                        count++;
+                    }
+                }
+                const int pixelIndex = j * H + i;
+                uchar4 avgPixel = (uchar4)(rSum / count, gSum / count, bSum / count, 255);
+                output[pixelIndex] = avgPixel;
+            }
+            }}
+        """
+
+        def pixelate_image(image_array, W, H):
+            # Convert image array to numpy array
+            image_np = np.array(image_array, dtype=np.uint8)
+
+            # Reshape the image array to a flat array of pixels
+            flat_image = image_np.reshape(-1, 3)
+
+            # Initialize OpenCL context
+            ctx = cl.create_some_context()
+            queue = cl.CommandQueue(ctx)
+
+            # Create input and output buffers
+            mf = cl.mem_flags
+            input_buffer = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=flat_image)
+            output_buffer = cl.Buffer(ctx, mf.WRITE_ONLY, size=flat_image.nbytes)
+
+            # Compile the kernel code and create the kernel
+            prg = cl.Program(ctx, kernel_code).build()
+            kernel = prg.pixelate
+
+            # Get the image dimensions
+            width, height, _ = image_np.shape
+
+            # Convert W and H to np.int32
+            W = np.int32(W)
+            H = np.int32(H)
+            width = np.int32(width)
+            height = np.int32(height)
+
+            # Execute the kernel
+            kernel_args = (input_buffer, output_buffer, W, H, width, height)
+            kernel(queue, (W, H), None, *kernel_args)
+
+            # Read the output buffer
+            output_image = np.empty_like(flat_image)
+            cl.enqueue_copy(queue, output_image, output_buffer)
+
+            # Reshape the output image to the original shape
+            output_image = output_image.reshape(image_np.shape)
+
+            return output_image.tolist()
+        input_image = [
+            [(255, 0, 0), (0, 255, 0), (0, 0, 255)],
+            [(0, 0, 255), (255, 0, 0), (0, 255, 0)],
+            [(0, 255, 0), (0, 0, 255), (255, 0, 0)]
+        ]
+
+        W = 2
+        H = 2
+
+        output_image = pixelate_image(input_image, W, H)
+        print(output_image)
+
+        Pixels3D = pygame.surfarray.array3d(self.img)
+        pixelated = pixelate_image(Pixels3D, 40, 40)
+
+        for i in range(len(grid)):
+            for j in range(len(grid[0])):
+                grid[i][j] = pixelated[i][j]
 
