@@ -8,4 +8,5 @@
 
 
 # Note:
-# The program is a bit laggy due to the downscaling process, but all functionality and buttons do work.
+# All functionality and buttons work.
+# Added more rendering options (Accuracy vs Speed)
