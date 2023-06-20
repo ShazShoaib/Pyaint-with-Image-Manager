@@ -43,39 +43,19 @@ COLORS.append(PURPLE)
 
 FPS             = 120
 WIDTH, HEIGHT   = 600, 700
-ROWS = COLS     = 40    #increase to have smaller pixels
+ROWS = COLS     = 40                #increase to have smaller pixels
 TOOLBAR_HEIGHT  = HEIGHT - WIDTH
 PIXEL_SIZE      = WIDTH // COLS
 BG_COLOR        = WHITE
-DRAW_GRID_LINES = True
-FAST_RENDER = True
-GPU_ACCELERATION = False
-
-def get_font(size):
-    return pygame.font.SysFont("arial", size)
-
-
-FPS             = 120
-
-WIDTH, HEIGHT   = 600, 700
-
-ROWS = COLS     = 120    #increase to have smaller pixels
-
-TOOLBAR_HEIGHT  = HEIGHT - WIDTH
-
 RIGHT_TOOLBAR_WIDTH = 75
-
 SECOND_TOOLBAR_WIDTH = 100
-
-PIXEL_SIZE      = WIDTH // COLS
-
-BG_COLOR        = WHITE
-
-DRAW_GRID_LINES = True
-
 MOUSE_POSITION_TEXT_SIZE = 12
-
-BRUSH_SIZE = 1  #can be 2, 3, 4 or any other value
+BRUSH_SIZE = 1                      #can be 2, 3, 4 or any other value
+DRAW_GRID_LINES = True
+FAST_RENDER = True                  #To use a fast renderer for very large images (uses CPU, overrides GPU_ACCELERATION)
+GPU_ACCELERATION = False            #To utilize the GPU (Requires OpenCL)
 
 def get_font(size):
     return pygame.font.SysFont("arial", size)
+
+
